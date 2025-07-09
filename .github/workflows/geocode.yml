@@ -1,0 +1,92 @@
+name: Geocode and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'main.py'
+      - 'univ_moe.xls'
+      - 'univ_supp.json'
+  workflow_dispatch:
+    inputs:
+      iteration:
+        description: The iteration of the release tag, e.g., 'a', 'b', etc.
+        required: true
+        default: 'a'
+
+jobs:
+  metadata:
+    name: Retrieve metadata
+    runs-on: ubuntu-latest
+    outputs:
+      current-week: ${{ steps.current-week.outputs.CURRENT_WEEK }}
+      release-tag: ${{ steps.release-tag.outputs.RELEASE_TAG }}
+    steps:
+      - name: Specify current week
+        id: current-week
+        run: echo "CURRENT_WEEK=$(date +'%yw%V')" >> $GITHUB_OUTPUT
+      - name: Specify release tag
+        id: release-tag
+        run: |
+          ITERATION=${{ github.event.inputs.iteration || 'a' }}
+          TAG=$(date +'%y')w$(date +'%V')$ITERATION
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_OUTPUT
+
+  geocode-and-release:
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '>=3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare .env file
+        run: |
+          echo "TENCENT_MAP_KEY=${{ secrets.TENCENT_MAP_KEY }}" >> .env
+          echo "TENCENT_MAP_SK=${{ secrets.TENCENT_MAP_SK }}" >> .env
+
+      - name: Run geocoding script
+        run: python main.py
+
+      - name: Archive output files
+        uses: actions/upload-artifact@v4
+        with:
+          name: geocoder-outputs
+          path: |
+            universities.json
+            *.csv
+            *.log
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.release-tag }}
+          name: ${{ needs.metadata.outputs.release-tag }}
+          body: |
+            Automated geocoding run triggered by a critical push to the main branch or a manual dispatch.
+            This release includes geocoded university data and logs from the run `${{ needs.metadata.outputs.release-tag }}`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.release-tag }}
+          name: ${{ needs.metadata.outputs.release-tag }}
+          files: |
+            universities.json
+            *.csv
+            *.log
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
