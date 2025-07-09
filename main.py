@@ -324,7 +324,7 @@ def process_university_data(excel_path: str):
         # 合并附加数据
         fields_to_merge = [
             "majorCategory",
-            "type",
+            "natureOfRunning",
             "is985",
             "is211",
             "isDoubleFirstClass",
