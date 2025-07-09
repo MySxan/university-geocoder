@@ -4,6 +4,8 @@ venv/
 
 *.env
 
-*.log
+*.json
 *.csv
-universities.json
+*.log
+
+!univ_supp.json
