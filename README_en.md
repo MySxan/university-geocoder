@@ -56,9 +56,8 @@ python main.py
 - The script will log output to a timestamped log file (e.g., `run_log_YYYYMMDD_HHMMSS.log`).
 - Results will be saved as:
   - `universities.json`: Universities with campus geocodes
-  - `universities_with_no_campuses.json`: Universities with no campus found
+  - `universities_with_no_campuses.csv`: Universities with no campus found
   - `rejected_pois.csv`: POIs rejected by the name rules
-  - `universities_with_no_poi.csv`: Universities with no POI returned by the API
   - `universities_without_details.csv`: Universities missing details in the supplementary JSON
 
 ## File Structure

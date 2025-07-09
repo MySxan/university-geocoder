@@ -56,9 +56,8 @@ python main.py
 - 日志将输出到带时间戳的日志文件（如 `run_log_YYYYMMDD_HHMMSS.log`）。
 - 结果文件包括：
   - `universities.json`：带校区地理信息的高校
-  - `universities_with_no_campuses.json`：未找到校区的高校
+  - `universities_with_no_campuses.csv`：未找到校区的高校
   - `rejected_pois.csv`：被名称规则拒绝的 POI
-  - `universities_with_no_poi.csv`：API 未返回 POI 的高校
   - `universities_without_details.csv`：补充 JSON 缺失详细信息的高校
 
 ## 文件结构

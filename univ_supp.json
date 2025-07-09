@@ -2700,7 +2700,7 @@
   "_id": {
     "$oid": "6859b2ddae87f6a005bda023"
   },
-  "name": "天津市职业大学",
+  "name": "天津职业大学",
   "majorCategory": "综合类",
   "natureOfRunning": "公办",
   "schoolType": "专科（高职）",
@@ -20166,7 +20166,7 @@
   "_id": {
     "$oid": "6859b2ddae87f6a005bda319"
   },
-  "name": "镇江市高等专科学校",
+  "name": "镇江高等专科学校",
   "majorCategory": "理工类",
   "natureOfRunning": "公办",
   "schoolType": "专科（高职）",

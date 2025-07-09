@@ -32,14 +32,15 @@ PAGE_SIZE = 20
 MAX_RETRIES = 10  # QPS超限时的最大重试次数
 RETRY_DELAY = 2  # 重试前的等待时间（秒）
 
-# 输入/输出文件配置
+# 输入文件配置
 EXCEL_FILE = "univ_moe.xls"
 SUPP_JSON_FILE = "univ_supp.json"
+
+# 输出文件配置
 OUTPUT_JSON_FILE = "universities.json"
 REJECTED_CSV_FILE = "rejected_pois.csv"
-NO_POI_CSV_FILE = "universities_with_no_poi.csv"
 NO_DETAILS_CSV_FILE = "universities_without_details.csv"
-NO_CAMPUSES_JSON_FILE = "universities_with_no_campuses.json"
+NO_CAMPUSES_CSV_FILE = "universities_with_no_campuses.csv"
 LOG_FILE_PREFIX = "run_log"
 
 
@@ -288,18 +289,21 @@ def process_university_data(excel_path: str):
     df.dropna(subset=["id"], inplace=True)
     df["id"] = df["id"].astype(float).astype(int).astype(str)
 
-    # 清理学校名称，去掉“民办”前缀
-    df["name"] = df["name"].apply(
-        lambda name: (
-            name[2:] if isinstance(name, str) and name.startswith("民办") else name
-        )
-    )
+    # 清理学校名称
+    def clean_name(name):
+        if isinstance(name, str):
+            if name.startswith("民办"):
+                name = name[2:]
+            # 去掉“市”，但不去掉“城市”或“都市”
+            name = re.sub(r"(?<![城都])市", "", name)
+        return name
+
+    df["name"] = df["name"].apply(clean_name)
 
     # 初始化结果和报告列表
     universities_list = df.to_dict("records")
     rejected_pois = []
     final_universities_data = []
-    schools_with_no_poi = []
     schools_without_details = []
     processed_poi_ids = set()
 
@@ -340,7 +344,6 @@ def process_university_data(excel_path: str):
         processed_campus_names = set()  # 用于校区去重
         page_index = 1
         total_pages = 1
-        found_poi = False
 
         # 处理分页API请求
         while page_index <= total_pages:
@@ -395,9 +398,8 @@ def process_university_data(excel_path: str):
                                 },
                             }
                             school_output["campuses"].append(campus_data)
-                            found_poi = True
                             print(
-                                f"    [✅] {poi.get('title')} (ID: {poi.get('id')}) -> {campus_name_processed}"
+                                f"    [✅] {poi.get('title')} -> {campus_name_processed} (ID: {poi.get('id')})"
                             )
                         else:
                             print(
@@ -410,10 +412,6 @@ def process_university_data(excel_path: str):
                 print(f"  - API请求失败或无数据，跳过此学校的后续请求。")
                 break
             page_index += 1
-
-        if not found_poi:
-            print("  - 未找到相关POI。")
-            schools_with_no_poi.append(school_from_xls)
 
         final_universities_data.append(school_output)
 
@@ -435,12 +433,19 @@ def process_university_data(excel_path: str):
         f"✅ 有校区的大学数据已写入: {OUTPUT_JSON_FILE} ({len(universities_with_campuses)} 条)"
     )
 
-    # 写入没有校区的大学JSON文件
+    # 写入没有校区的大学CSV文件
     if universities_without_campuses:
-        with open(NO_CAMPUSES_JSON_FILE, "w", encoding="utf-8") as f:
-            json.dump(universities_without_campuses, f, ensure_ascii=False, indent=4)
+        # 确保campuses键存在，即使为空
+        for school in universities_without_campuses:
+            if "campuses" not in school:
+                school["campuses"] = []
+        header = universities_without_campuses[0].keys()
+        with open(NO_CAMPUSES_CSV_FILE, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(universities_without_campuses)
         print(
-            f"✅ 没有校区的大学列表已写入: {NO_CAMPUSES_JSON_FILE} ({len(universities_without_campuses)} 条)"
+            f"✅ 没有校区的大学列表已写入: {NO_CAMPUSES_CSV_FILE} ({len(universities_without_campuses)} 条)"
         )
 
     # 写入被拒绝的POI
@@ -454,18 +459,11 @@ def process_university_data(excel_path: str):
             f"✅ 被拒绝的POI列表已写入: {REJECTED_CSV_FILE} ({len(rejected_pois)} 条)"
         )
 
-    # 写入未找到POI的学校
-    if schools_with_no_poi:
-        with open(NO_POI_CSV_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=schools_with_no_poi[0].keys())
-            writer.writeheader()
-            writer.writerows(schools_with_no_poi)
-        print(
-            f"✅ API未返回任何POI的学校列表已写入: {NO_POI_CSV_FILE} ({len(schools_with_no_poi)} 条)"
-        )
-
     # 写入未找到附加信息的学校
     if schools_without_details:
+        # 确保ID为字符串格式
+        for school in schools_without_details:
+            school["id"] = str(int(school["id"]))
         with open(NO_DETAILS_CSV_FILE, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=schools_without_details[0].keys())
             writer.writeheader()
