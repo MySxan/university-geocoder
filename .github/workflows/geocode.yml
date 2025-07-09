@@ -34,6 +34,7 @@ jobs:
           echo "RELEASE_TAG=$TAG" >> $GITHUB_OUTPUT
 
   geocode-and-release:
+    name: Geocode and Release
     needs: metadata
     runs-on: ubuntu-latest
     steps:
