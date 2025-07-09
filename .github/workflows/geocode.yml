@@ -5,15 +5,15 @@ on:
     branches:
       - main
     paths:
-      - 'main.py'
-      - 'univ_moe.xls'
-      - 'univ_supp.json'
+      - "main.py"
+      - "univ_moe.xls"
+      - "univ_supp.json"
   workflow_dispatch:
     inputs:
       iteration:
         description: The iteration of the release tag, e.g., 'a', 'b', etc.
         required: true
-        default: 'a'
+        default: "a"
 
 jobs:
   metadata:
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '>=3.9'
+          python-version: ">=3.9"
 
       - name: Install dependencies
         run: |
