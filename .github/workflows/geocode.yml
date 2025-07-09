@@ -8,6 +8,7 @@ on:
       - "main.py"
       - "univ_moe.xls"
       - "univ_supp.json"
+      - ".github/workflows/geocode.yml"
   workflow_dispatch:
     inputs:
       iteration:
@@ -38,7 +39,7 @@ jobs:
           echo "RELEASE_TAG=$TAG" >> $GITHUB_OUTPUT
 
   geocode-and-release:
-    name: Geocode and Release
+    name: Geocode and release
     needs: metadata
     runs-on: ubuntu-latest
     steps:
