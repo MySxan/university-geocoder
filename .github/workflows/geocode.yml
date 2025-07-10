@@ -75,23 +75,14 @@ jobs:
             *.csv
             *.log
 
-      - name: Create GitHub Release
-        id: create_release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.release-tag }}
           name: ${{ needs.metadata.outputs.release-tag }}
           body: |
             Automated geocoding run triggered by a critical push to the main branch or a manual dispatch.
-            This release includes geocoded university data and logs from the run `${{ needs.metadata.outputs.release-tag }}`.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.metadata.outputs.release-tag }}
-          name: ${{ needs.metadata.outputs.release-tag }}
+            This release includes geocoded university data and logs from the run ${{ needs.metadata.outputs.release-tag }}.
           files: |
             universities.json
             *.csv
