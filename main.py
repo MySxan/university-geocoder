@@ -44,7 +44,12 @@ NO_CAMPUSES_CSV_FILE = "universities_with_no_campuses.csv"
 LOG_FILE_PREFIX = "run_log"
 
 
-# --- 日志记录类 ---
+class QuotaExceededError(Exception):
+    """当API每日调用量达到上限时抛出的自定义异常。"""
+
+    pass
+
+
 class Logger(object):
     """
     将控制台输出同时写入文件。
@@ -96,9 +101,10 @@ def request_tencent_api(path: str, params: dict, sk: str):
                 time.sleep(RETRY_DELAY)
                 continue  # 进入下一次重试
             else:
-                print(
-                    f"  - API返回错误: status={status}, message={response_data.get('message')}"
-                )
+                message = response_data.get("message")
+                print(f"  - API返回错误: status={status}, message={message}")
+                if status == 121:
+                    raise QuotaExceededError(message)
                 return None
 
         except requests.exceptions.Timeout:
@@ -155,6 +161,8 @@ def post_process_name(name: str) -> str:
 
 def is_valid_campus_name(name: str) -> bool:
     """检查名称是否符合校区名定义"""
+    if name == "":
+        return True
     if not name:
         return False
     # 非附属
@@ -245,12 +253,14 @@ def process_university_data(excel_path: str):
         print("请确保项目根目录下存在 .env 文件，并且其中包含正确的Key和SK。")
         return
 
-    # 1. 读取Excel文件 (重写逻辑以处理复杂表头)
+    # 1. 读取Excel文件
     try:
         print(f"正在读取Excel文件: {excel_path}")
         df_temp = pd.read_excel(excel_path, header=None)
         header_row_index = -1
         for i, row in df_temp.iterrows():
+            if not isinstance(i, int):
+                continue
             if "学校名称" in str(row.values):
                 header_row_index = i
                 break
@@ -306,114 +316,127 @@ def process_university_data(excel_path: str):
     final_universities_data = []
     schools_without_details = []
     processed_poi_ids = set()
+    quota_exceeded = False  # 用于标记配额是否耗尽
 
     print(f"成功读取并清理了 {len(universities_list)} 所学校。开始处理...")
 
-    # 4. 遍历每所学校
-    for index, school_from_xls in enumerate(universities_list):
-        school_name = school_from_xls.get("name")
-        print(f"\n[{index + 1}/{len(universities_list)}] 正在查询: {school_name}")
+    try:  # 包裹主循环以便捕获配额异常
+        # 4. 遍历每所学校
+        for index, school_from_xls in enumerate(universities_list):
+            school_name = school_from_xls.get("name")
+            if not school_name:
+                print(
+                    f"\n[{index + 1}/{len(universities_list)}] 学校名称为空，跳过此条记录。"
+                )
+                continue
+            print(f"\n[{index + 1}/{len(universities_list)}] 正在查询: {school_name}")
 
-        school_output = {
-            "id": school_from_xls.get("id"),
-            "name": school_name,
-            "affiliation": school_from_xls.get("affiliation"),
-            "type": school_from_xls.get("type"),
-        }
-
-        # 合并附加数据
-        fields_to_merge = [
-            "majorCategory",
-            "natureOfRunning",
-            "is985",
-            "is211",
-            "isDoubleFirstClass",
-        ]
-        if school_name in supp_data_map:
-            details = supp_data_map[school_name]
-            for field in fields_to_merge:
-                if field in details:
-                    school_output[field] = details[field]
-        else:
-            print(f"  - 在 {SUPP_JSON_FILE} 中未找到匹配项。")
-            for field in fields_to_merge:
-                school_output[field] = None
-            schools_without_details.append(school_from_xls)
-
-        school_output["campuses"] = []
-        processed_campus_names = set()  # 用于校区去重
-        page_index = 1
-        total_pages = 1
-
-        # 处理分页API请求
-        while page_index <= total_pages:
-            print(f"  - 正在请求第 {page_index}/{total_pages} 页...")
-            params = {
-                "keyword": school_name,
-                "key": MY_KEY,
-                "filter": "category=大学",
-                "get_ad": 1,
-                "page_size": PAGE_SIZE,
-                "page_index": page_index,
-                "added_fields": "category_code",
+            school_output = {
+                "id": school_from_xls.get("id"),
+                "name": school_name,
+                "affiliation": school_from_xls.get("affiliation"),
+                "type": school_from_xls.get("type"),
             }
-            response_data = request_tencent_api(API_PATH, params, MY_SK)
-            time.sleep(0.2)
 
-            if response_data:
-                if page_index == 1:
-                    count = response_data.get("count", 0)
-                    total_pages = math.ceil(count / PAGE_SIZE)
-
-                for poi in response_data.get("data", []):
-                    poi_id = poi.get("id")
-
-                    if poi_id and poi_id in processed_poi_ids:
-                        print(
-                            f"    [🌐] {poi.get('title')} (ID: {poi_id} 已在全局保存)"
-                        )
-                        continue
-
-                    campus_name_processed = parse_campus_name(poi, school_name)
-
-                    if campus_name_processed != "REJECT":
-                        # 检查校区名是否已存在
-                        if campus_name_processed not in processed_campus_names:
-                            processed_campus_names.add(campus_name_processed)
-                            processed_poi_ids.add(poi_id)  # 添加到全局ID集合
-                            location = poi.get("location", {})
-                            campus_data = {
-                                "id": poi.get("id"),
-                                "name": campus_name_processed,
-                                "address": poi.get("address"),
-                                "province": poi.get("province"),
-                                "city": poi.get("city"),
-                                "district": poi.get("district"),
-                                "location": {
-                                    "type": "Point",
-                                    "coordinates": [
-                                        location.get("lng"),
-                                        location.get("lat"),
-                                    ],
-                                },
-                            }
-                            school_output["campuses"].append(campus_data)
-                            print(
-                                f"    [✅] {poi.get('title')} -> {campus_name_processed} (ID: {poi.get('id')})"
-                            )
-                        else:
-                            print(
-                                f"    [⏭️] {poi.get('title')} -> {campus_name_processed} (本校内同名)"
-                            )
-                    else:
-                        rejected_pois.append(poi)
-                        print(f"    [❌] {poi.get('title')}")
+            # 合并附加数据
+            fields_to_merge = [
+                "majorCategory",
+                "natureOfRunning",
+                "is985",
+                "is211",
+                "isDoubleFirstClass",
+            ]
+            if school_name in supp_data_map:
+                details = supp_data_map[school_name]
+                for field in fields_to_merge:
+                    if field in details:
+                        school_output[field] = details[field]
             else:
-                print(f"  - API请求失败或无数据，跳过此学校的后续请求。")
-                break
-            page_index += 1
+                print(f"  - 在 {SUPP_JSON_FILE} 中未找到匹配项。")
+                for field in fields_to_merge:
+                    school_output[field] = None
+                schools_without_details.append(school_from_xls)
 
-        final_universities_data.append(school_output)
+            school_output["campuses"] = []
+            processed_campus_names = set()  # 用于校区去重
+            page_index = 1
+            total_pages = 1
+
+            # 处理分页API请求
+            while page_index <= total_pages:
+                print(f"  - 正在请求第 {page_index}/{total_pages} 页...")
+                params = {
+                    "keyword": school_name,
+                    "key": MY_KEY,
+                    "filter": "category=大学",
+                    "get_ad": 1,
+                    "page_size": PAGE_SIZE,
+                    "page_index": page_index,
+                    "added_fields": "category_code",
+                }
+                response_data = request_tencent_api(API_PATH, params, MY_SK)
+                time.sleep(0.2)
+
+                if response_data:
+                    if page_index == 1:
+                        count = response_data.get("count", 0)
+                        total_pages = math.ceil(count / PAGE_SIZE)
+
+                    for poi in response_data.get("data", []):
+                        poi_id = poi.get("id")
+
+                        if poi_id and poi_id in processed_poi_ids:
+                            print(
+                                f"    [🌐] {poi.get('title')} (ID: {poi_id} 已在全局保存)"
+                            )
+                            continue
+
+                        campus_name_processed = parse_campus_name(poi, school_name)
+                        if campus_name_processed == "":
+                            campus_name_processed = None
+
+                        if campus_name_processed != "REJECT":
+                            # 检查校区名是否已存在
+                            if campus_name_processed not in processed_campus_names:
+                                processed_campus_names.add(campus_name_processed)
+                                processed_poi_ids.add(poi_id)  # 添加到全局ID集合
+                                location = poi.get("location", {})
+                                campus_data = {
+                                    "id": poi.get("id"),
+                                    "name": campus_name_processed,
+                                    "address": poi.get("address"),
+                                    "province": poi.get("province"),
+                                    "city": poi.get("city"),
+                                    "district": poi.get("district"),
+                                    "location": {
+                                        "type": "Point",
+                                        "coordinates": [
+                                            location.get("lng"),
+                                            location.get("lat"),
+                                        ],
+                                    },
+                                }
+                                school_output["campuses"].append(campus_data)
+                                print(
+                                    f"    [✅] {poi.get('title')} -> {campus_name_processed} (ID: {poi.get('id')})"
+                                )
+                            else:
+                                print(
+                                    f"    [⏭️] {poi.get('title')} -> {campus_name_processed} (本校内同名)"
+                                )
+                        else:
+                            rejected_pois.append(poi)
+                            print(f"    [❌] {poi.get('title')}")
+                else:
+                    print(f"  - API请求失败或无数据，跳过此学校的后续请求。")
+                    break
+                page_index += 1
+
+            final_universities_data.append(school_output)
+
+    except QuotaExceededError:
+        print("\n因API每日调用量已达上限，处理中断。")
+        quota_exceeded = True
 
     # 5. 写入所有输出文件
     print("\n--- 处理完成，正在生成报告文件 ---")
@@ -471,6 +494,11 @@ def process_university_data(excel_path: str):
         print(
             f"✅ 未找到附加信息的学校列表已写入: {NO_DETAILS_CSV_FILE} ({len(schools_without_details)} 条)"
         )
+
+    # 如果是因为配额耗尽而退出，则使用错误码
+    if quota_exceeded:
+        print("\n脚本因API配额耗尽而终止，已保存当前进度。退出状态码: 1")
+        sys.exit(1)
 
 
 # --- 脚本入口 ---
