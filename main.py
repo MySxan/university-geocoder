@@ -176,12 +176,38 @@ def is_valid_campus_name(name: str) -> bool:
     return False
 
 
+def is_location_substring(text: str, poi: dict) -> bool:
+    """检查文本是否是省、市、区之一的子字符串。"""
+    if not text:
+        return False
+    poi_province = poi.get("province", "")
+    poi_city = poi.get("city", "")
+    poi_district = poi.get("district", "")
+
+    return (
+        (poi_province and text in poi_province)
+        or (poi_city and text in poi_city)
+        or (poi_district and text in poi_district)
+    )
+
+
+def extract_bracketed_content(text: str) -> str:
+    """
+    提取文本中括号内的内容，并返回去除括号后的内容。
+    """
+    text = text.strip()
+    if not text:
+        return ""
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1]
+    return text.strip()
+
+
 def parse_campus_name(poi: dict, school_name: str):
     """
     根据新的复杂规则解析POI标题以提取校区名称。
     """
     poi_title = poi.get("title", "")
-    poi_address = poi.get("address", "")
 
     # 1. 灵活的前缀匹配
     pattern_str = (
@@ -197,6 +223,14 @@ def parse_campus_name(poi: dict, school_name: str):
         return None
 
     remaining_title = poi_title[match.end() :].strip()
+
+    # 对 "主校区" 和 "校本部" 进行处理：如果存在，移除最后一次出现的位置
+    for word in ["主校区", "校本部"]:
+        idx = remaining_title.rfind(word)
+        if idx != -1:
+            remaining_title = remaining_title[:idx] + remaining_title[idx + len(word) :]
+            remaining_title = remaining_title.strip()
+
     if not remaining_title:
         return None
 
@@ -207,37 +241,28 @@ def parse_campus_name(poi: dict, school_name: str):
     for i in range(len(parts) - 1, -1, -1):
         current_part = parts[i]
         # 提取片段内容（无论是否在括号内）
-        content = current_part.strip()
-        if content.startswith("(") and content.endswith(")"):
-            content = content[1:-1].strip()
+        content = extract_bracketed_content(current_part)
 
         post_processed_content = post_process_name(content)
 
         # 检查此片段是否为有效锚点
-        is_anchor = is_valid_campus_name(post_processed_content) or (
-            post_processed_content
-            and poi_address
-            and post_processed_content in poi_address
-        )
+        is_campus_name = is_valid_campus_name(post_processed_content)
+        is_loc_substr = is_location_substring(post_processed_content, poi)
+        is_anchor = is_campus_name or is_loc_substr
 
         if is_anchor:
             # 4. 如果找到锚点，拼接从开头到此锚点的所有部分
             final_name_parts = []
             for j in range(i + 1):
-                part_to_add = parts[j]
-                if part_to_add.startswith("(") and part_to_add.endswith(")"):
-                    final_name_parts.append(part_to_add[1:-1].strip())
-                else:
-                    final_name_parts.append(part_to_add.strip())
+                final_name_parts.append(extract_bracketed_content(parts[j]))
 
             final_name = "".join(final_name_parts)
 
-            # 如果最终拼接的名称本身不符合规则（通常是因为靠地址匹配上的）
+            # 如果最终拼接的名称本身不符合规则（通常是因为靠行政区划匹配上的）
             # 则为其补上“校区”后缀
-            if not is_valid_campus_name(post_process_name(final_name)) and (
-                post_processed_content
-                and poi_address
-                and post_processed_content in poi_address
+            if (
+                not is_valid_campus_name(post_process_name(final_name))
+                and is_loc_substr
             ):
                 final_name += "校区"
 
