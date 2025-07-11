@@ -176,70 +176,86 @@ def is_valid_campus_name(name: str) -> bool:
     return False
 
 
-def check_and_get_name(part: str, poi_address: str):
+def extract_bracketed_content(text: str) -> str:
     """
-    辅助函数：检查一个部分是否是有效校区名，或能否通过地址辅助成为校区名
+    提取文本中括号内的内容，并返回去除括号后的内容。
     """
-    processed_part = post_process_name(part)
-    if is_valid_campus_name(processed_part):
-        return processed_part
-
-    # 如果名称是地址的子串，则加上“校区”
-    if processed_part and poi_address and processed_part in poi_address:
-        return f"{processed_part}校区"
-
-    return None
+    text = text.strip()
+    if not text:
+        return ""
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1]
+    return text.strip()
 
 
 def parse_campus_name(poi: dict, school_name: str):
     """
-    根据规则解析POI标题以提取校区名称。
-    返回后处理过的校区名，如果无匹配则返回None。
+    根据新的复杂规则解析POI标题以提取校区名称。
     """
     poi_title = poi.get("title", "")
     poi_address = poi.get("address", "")
 
-    # 通过灵活的正则表达式匹配学校名，忽略括号差异
+    # 1. 灵活的前缀匹配
     pattern_str = (
         re.escape(school_name).replace(r"（", r"[\(（]").replace(r"）", r"[\)）]")
     )
     pattern = re.compile(f"^{pattern_str}")
     match = pattern.match(poi_title)
 
-    # 如果完全匹配（包括括号差异），也视为null校区
-    if match and match.end() == len(poi_title):
-        return None
-
     if not match:
         return "REJECT"
 
+    if match.end() == len(poi_title):
+        return None
+
     remaining_title = poi_title[match.end() :].strip()
+
+    # 对 "主校区" 和 "校本部" 进行处理：如果存在，移除最后一次出现的位置
+    for word in ["主校区", "校本部"]:
+        idx = remaining_title.rfind(word)
+        if idx != -1:
+            remaining_title = remaining_title[:idx] + remaining_title[idx + len(word) :]
+            remaining_title = remaining_title.strip()
+
     if not remaining_title:
         return None
 
-    if remaining_title in ["主校区", "校本部"]:
-        return None
+    # 2. 将剩余部分分割为带括号和不带括号的片段
+    parts = [p for p in re.split(r"(\([^)]+\))", remaining_title) if p]
 
-    # 括号解析 B_0(B_1)...(B_n)
-    parts_in_parentheses = re.findall(r"\(([^)]+)\)", remaining_title)
-    # 从后往前检查括号内容 (B_n -> B_1)
-    for part in reversed(parts_in_parentheses):
-        campus_name = check_and_get_name(part, poi_address)
-        if campus_name is not None:
-            return campus_name
+    # 3. 从后向前遍历片段，寻找第一个有效的“锚点”
+    for i in range(len(parts) - 1, -1, -1):
+        current_part = parts[i]
+        # 提取片段内容（无论是否在括号内）
+        content = extract_bracketed_content(current_part)
 
-    # 检查第一个括号前的内容
-    b0_part = remaining_title.split("(", 1)[0].strip()
-    if b0_part:
-        campus_name = check_and_get_name(b0_part, poi_address)
-        if campus_name is not None:
-            return campus_name
+        post_processed_content = post_process_name(content)
 
-    # 如果没有括号，检查整个剩余部分
-    if not parts_in_parentheses:
-        campus_name = check_and_get_name(remaining_title, poi_address)
-        if campus_name is not None:
-            return campus_name
+        # 检查此片段是否为有效锚点
+        is_anchor = is_valid_campus_name(post_processed_content) or (
+            post_processed_content
+            and poi_address
+            and post_processed_content in poi_address
+        )
+
+        if is_anchor:
+            # 4. 如果找到锚点，拼接从开头到此锚点的所有部分
+            final_name_parts = []
+            for j in range(i + 1):
+                final_name_parts.append(extract_bracketed_content(parts[j]))
+
+            final_name = "".join(final_name_parts)
+
+            # 如果最终拼接的名称本身不符合规则（通常是因为靠地址匹配上的）
+            # 则为其补上“校区”后缀
+            if not is_valid_campus_name(post_process_name(final_name)) and (
+                post_processed_content
+                and poi_address
+                and post_processed_content in poi_address
+            ):
+                final_name += "校区"
+
+            return post_process_name(final_name)
 
     return "REJECT"
 
@@ -313,9 +329,9 @@ def process_university_data(excel_path: str):
     # 初始化结果和报告列表
     universities_list = df.to_dict("records")
     rejected_pois = []
-    final_universities_data = []
+    final_universities_data_map = {}  # 使用map以方便查找
     schools_without_details = []
-    processed_poi_ids = set()
+    processed_pois_map = {}  # 存储更详细的匹配信息
     quota_exceeded = False  # 用于标记配额是否耗尽
 
     print(f"成功读取并清理了 {len(universities_list)} 所学校。开始处理...")
@@ -358,7 +374,8 @@ def process_university_data(excel_path: str):
                 schools_without_details.append(school_from_xls)
 
             school_output["campuses"] = []
-            processed_campus_names = set()  # 用于校区去重
+            final_universities_data_map[school_name] = school_output  # 存入map
+
             page_index = 1
             total_pages = 1
 
@@ -384,55 +401,77 @@ def process_university_data(excel_path: str):
 
                     for poi in response_data.get("data", []):
                         poi_id = poi.get("id")
-
-                        if poi_id and poi_id in processed_poi_ids:
-                            print(
-                                f"    [🌐] {poi.get('title')} (ID: {poi_id} 已在全局保存)"
-                            )
+                        poi_title = poi.get("title", "")
+                        if not poi_id or not poi_title:
                             continue
 
                         campus_name_processed = parse_campus_name(poi, school_name)
-                        if campus_name_processed == "":
-                            campus_name_processed = None
 
-                        if campus_name_processed != "REJECT":
-                            # 检查校区名是否已存在
-                            if campus_name_processed not in processed_campus_names:
-                                processed_campus_names.add(campus_name_processed)
-                                processed_poi_ids.add(poi_id)  # 添加到全局ID集合
-                                location = poi.get("location", {})
-                                campus_data = {
-                                    "id": poi.get("id"),
-                                    "name": campus_name_processed,
-                                    "address": poi.get("address"),
-                                    "province": poi.get("province"),
-                                    "city": poi.get("city"),
-                                    "district": poi.get("district"),
-                                    "location": {
-                                        "type": "Point",
-                                        "coordinates": [
-                                            location.get("lng"),
-                                            location.get("lat"),
-                                        ],
-                                    },
-                                }
-                                school_output["campuses"].append(campus_data)
-                                print(
-                                    f"    [✅] {poi.get('title')} -> {campus_name_processed} (ID: {poi.get('id')})"
-                                )
-                            else:
-                                print(
-                                    f"    [⏭️] {poi.get('title')} -> {campus_name_processed} (本校内同名)"
-                                )
-                        else:
+                        if campus_name_processed == "REJECT":
                             rejected_pois.append(poi)
                             print(f"    [❌] {poi.get('title')}")
+                            continue
+
+                        # --- 最长前缀占比匹配核心逻辑 ---
+                        current_prefix_ratio = len(school_name) / len(poi_title)
+                        previous_match = processed_pois_map.get(poi_id)
+
+                        if (
+                            not previous_match
+                            or current_prefix_ratio > previous_match["prefix_ratio"]
+                        ):
+                            location = poi.get("location", {})
+                            campus_data = {
+                                "id": poi_id,
+                                "name": campus_name_processed,
+                                "address": poi.get("address"),
+                                "province": poi.get("province"),
+                                "city": poi.get("city"),
+                                "district": poi.get("district"),
+                                "location": {
+                                    "type": "Point",
+                                    "coordinates": [
+                                        location.get("lng"),
+                                        location.get("lat"),
+                                    ],
+                                },
+                            }
+
+                            if previous_match:
+                                prev_school_name = previous_match["school_name"]
+                                prev_school_output = final_universities_data_map.get(
+                                    prev_school_name
+                                )
+                                if prev_school_output:
+                                    prev_school_output["campuses"] = [
+                                        c
+                                        for c in prev_school_output["campuses"]
+                                        if c.get("id") != poi_id
+                                    ]
+                                    print(
+                                        f"    [🔄] POI '{poi_title}' 从 '{prev_school_name}' (占比 {previous_match['prefix_ratio']:.2f}) 转移到 '{school_name}' (占比 {current_prefix_ratio:.2f})"
+                                    )
+
+                            # 添加到当前学校
+                            school_output["campuses"].append(campus_data)
+
+                            # 更新POI所有权记录
+                            processed_pois_map[poi_id] = {
+                                "school_name": school_name,
+                                "prefix_ratio": current_prefix_ratio,
+                            }
+                            print(
+                                f"    [✅] {poi_title} → {campus_name_processed} (ID: {poi_id})"
+                            )
+
+                        else:
+                            print(
+                                f"    [🌐] {poi_title} (ID: {poi_id}, 已分配给更优匹配 '{previous_match['school_name']}' 占比 {previous_match['prefix_ratio']:.2f})"
+                            )
                 else:
                     print(f"  - API请求失败或无数据，跳过此学校的后续请求。")
                     break
                 page_index += 1
-
-            final_universities_data.append(school_output)
 
     except QuotaExceededError:
         print("\n因API每日调用量已达上限，处理中断。")
@@ -441,6 +480,9 @@ def process_university_data(excel_path: str):
     # 5. 写入所有输出文件
     print("\n--- 处理完成，正在生成报告文件 ---")
 
+    final_universities_data = list(
+        final_universities_data_map.values()
+    )  # 从map转回list
     universities_with_campuses = []
     universities_without_campuses = []
     for school in final_universities_data:
