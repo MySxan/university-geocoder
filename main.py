@@ -30,7 +30,7 @@ API_HOST = "https://apis.map.qq.com"
 API_PATH = "/ws/place/v1/suggestion"
 PAGE_SIZE = 20
 MAX_RETRIES = 10  # QPS超限时的最大重试次数
-RETRY_DELAY = 2  # 重试前的等待时间（秒）
+RETRY_DELAY = 1  # 重试前的等待时间（秒）
 
 # 输入文件配置
 EXCEL_FILE = "univ_moe.xls"
