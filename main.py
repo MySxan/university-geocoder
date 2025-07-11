@@ -176,18 +176,6 @@ def is_valid_campus_name(name: str) -> bool:
     return False
 
 
-def extract_bracketed_content(text: str) -> str:
-    """
-    提取文本中括号内的内容，并返回去除括号后的内容。
-    """
-    text = text.strip()
-    if not text:
-        return ""
-    if text.startswith("(") and text.endswith(")"):
-        text = text[1:-1]
-    return text.strip()
-
-
 def parse_campus_name(poi: dict, school_name: str):
     """
     根据新的复杂规则解析POI标题以提取校区名称。
@@ -209,14 +197,6 @@ def parse_campus_name(poi: dict, school_name: str):
         return None
 
     remaining_title = poi_title[match.end() :].strip()
-
-    # 对 "主校区" 和 "校本部" 进行处理：如果存在，移除最后一次出现的位置
-    for word in ["主校区", "校本部"]:
-        idx = remaining_title.rfind(word)
-        if idx != -1:
-            remaining_title = remaining_title[:idx] + remaining_title[idx + len(word) :]
-            remaining_title = remaining_title.strip()
-
     if not remaining_title:
         return None
 
@@ -227,7 +207,9 @@ def parse_campus_name(poi: dict, school_name: str):
     for i in range(len(parts) - 1, -1, -1):
         current_part = parts[i]
         # 提取片段内容（无论是否在括号内）
-        content = extract_bracketed_content(current_part)
+        content = current_part.strip()
+        if content.startswith("(") and content.endswith(")"):
+            content = content[1:-1].strip()
 
         post_processed_content = post_process_name(content)
 
@@ -242,7 +224,11 @@ def parse_campus_name(poi: dict, school_name: str):
             # 4. 如果找到锚点，拼接从开头到此锚点的所有部分
             final_name_parts = []
             for j in range(i + 1):
-                final_name_parts.append(extract_bracketed_content(parts[j]))
+                part_to_add = parts[j]
+                if part_to_add.startswith("(") and part_to_add.endswith(")"):
+                    final_name_parts.append(part_to_add[1:-1].strip())
+                else:
+                    final_name_parts.append(part_to_add.strip())
 
             final_name = "".join(final_name_parts)
 
@@ -420,6 +406,34 @@ def process_university_data(excel_path: str):
                             not previous_match
                             or current_prefix_ratio > previous_match["prefix_ratio"]
                         ):
+                            current_school_data = final_universities_data_map[
+                                school_name
+                            ]
+                            existing_campus_names = {
+                                c["name"] for c in current_school_data["campuses"]
+                            }
+
+                            if previous_match:
+                                prev_school_name = previous_match["school_name"]
+                                prev_school_output = final_universities_data_map.get(
+                                    prev_school_name
+                                )
+                                if prev_school_output:
+                                    prev_school_output["campuses"] = [
+                                        c
+                                        for c in prev_school_output["campuses"]
+                                        if c.get("id") != poi_id
+                                    ]
+                                    print(
+                                        f"    [🔄] {poi_title}: '{prev_school_name}' (占比 {previous_match['prefix_ratio']:.2f}) → '{school_name}' (占比 {current_prefix_ratio:.2f})"
+                                    )
+
+                            if campus_name_processed in existing_campus_names:
+                                print(
+                                    f"    [⏭️] {poi_title} → {campus_name_processed} (校内同名)"
+                                )
+                                continue
+
                             location = poi.get("location", {})
                             campus_data = {
                                 "id": poi_id,
@@ -436,26 +450,8 @@ def process_university_data(excel_path: str):
                                     ],
                                 },
                             }
+                            current_school_data["campuses"].append(campus_data)
 
-                            if previous_match:
-                                prev_school_name = previous_match["school_name"]
-                                prev_school_output = final_universities_data_map.get(
-                                    prev_school_name
-                                )
-                                if prev_school_output:
-                                    prev_school_output["campuses"] = [
-                                        c
-                                        for c in prev_school_output["campuses"]
-                                        if c.get("id") != poi_id
-                                    ]
-                                    print(
-                                        f"    [🔄] POI '{poi_title}' 从 '{prev_school_name}' (占比 {previous_match['prefix_ratio']:.2f}) 转移到 '{school_name}' (占比 {current_prefix_ratio:.2f})"
-                                    )
-
-                            # 添加到当前学校
-                            school_output["campuses"].append(campus_data)
-
-                            # 更新POI所有权记录
                             processed_pois_map[poi_id] = {
                                 "school_name": school_name,
                                 "prefix_ratio": current_prefix_ratio,
