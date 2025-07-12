@@ -122,10 +122,10 @@ def request_tencent_api(path: str, params: dict, sk: str):
     return None
 
 
-def post_process_name(name: str) -> str:
+def post_process_name(name: str) -> str | None:
     """对校区名称进行后处理"""
     if not name:
-        return name
+        return None
 
     # 1. trim
     processed_name = name.strip()
@@ -152,19 +152,17 @@ def post_process_name(name: str) -> str:
     for suffix in suffixes_to_remove:
         if processed_name.endswith(suffix):
             processed_name = processed_name[: -len(suffix)]
-            break  # 只移除一个
+
     # 4. 将“XX主校区YY”替换为“XX校区YY”
-    processed_name = re.sub(r"(.+)主校区", r"\1校区", processed_name)
+    processed_name = re.sub(r"(.+)主校区", r"\1校区", processed_name).strip()
 
-    return processed_name.strip()
+    return processed_name if processed_name else None
 
 
-def is_valid_campus_name(name: str) -> bool:
+def is_valid_campus_name(name: str | None) -> bool:
     """检查名称是否符合校区名定义"""
-    if name == "":
-        return True
     if not name:
-        return False
+        return True
     # 非附属
     if "附属" in name or "医院" in name:
         return False
@@ -176,7 +174,7 @@ def is_valid_campus_name(name: str) -> bool:
     return False
 
 
-def is_location_substring(text: str, poi: dict) -> bool:
+def is_location_substring(text: str | None, poi: dict) -> bool:
     """检查文本是否是省、市、区之一的子字符串。"""
     if not text:
         return False
@@ -224,14 +222,7 @@ def parse_campus_name(poi: dict, school_name: str):
 
     remaining_title = poi_title[match.end() :].strip()
 
-    # 对 "主校区" 和 "校本部" 进行处理：如果存在，移除最后一次出现的位置
-    for word in ["主校区", "校本部"]:
-        idx = remaining_title.rfind(word)
-        if idx != -1:
-            remaining_title = remaining_title[:idx] + remaining_title[idx + len(word) :]
-            remaining_title = remaining_title.strip()
-
-    if not remaining_title:
+    if (not remaining_title) or (remaining_title in ["主校区", "校本部"]):
         return None
 
     # 2. 将剩余部分分割为带括号和不带括号的片段
