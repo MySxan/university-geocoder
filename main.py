@@ -161,8 +161,10 @@ def post_process_name(name: str) -> str | None:
 
 def is_valid_campus_name(name: str | None) -> bool:
     """检查名称是否符合校区名定义"""
-    if not name:
+    if name is None:
         return True
+    if not name:
+        return False
     # 非附属
     if "附属" in name or "医院" in name:
         return False
@@ -203,7 +205,7 @@ def extract_bracketed_content(text: str) -> str:
 
 def parse_campus_name(poi: dict, school_name: str):
     """
-    根据新的复杂规则解析POI标题以提取校区名称。
+    根据规则解析POI标题以提取校区名称。
     """
     poi_title = poi.get("title", "")
 
@@ -376,6 +378,7 @@ def process_university_data(excel_path: str):
                 schools_without_details.append(school_from_xls)
 
             school_output["campuses"] = []
+            school_output["_campus_map_temp"] = {}  # 临时的校内去重辅助map
             final_universities_data_map[school_name] = school_output  # 存入map
 
             page_index = 1
@@ -414,72 +417,98 @@ def process_university_data(excel_path: str):
                             print(f"    [❌] {poi.get('title')}")
                             continue
 
-                        # --- 最长前缀占比匹配核心逻辑 ---
+                        # --- 联合去重逻辑 ---
                         current_prefix_ratio = len(school_name) / len(poi_title)
-                        previous_match = processed_pois_map.get(poi_id)
+                        previous_global_match = processed_pois_map.get(poi_id)
+
+                        # 1. 全局检查：是否应归属此学校
+                        if (
+                            previous_global_match
+                            and current_prefix_ratio
+                            <= previous_global_match["prefix_ratio"]
+                        ):
+                            print(
+                                f"    [🌐] {poi_title} (ID: {poi_id}) 已分配给更优匹配 {previous_global_match['school_name']} (占比 {previous_global_match['prefix_ratio']:.2f})"
+                            )
+                            continue
+
+                        # 2. 校内检查：是否是同名校区中更具代表性的一个
+                        current_school_data = final_universities_data_map[school_name]
+                        local_campus_map = current_school_data["_campus_map_temp"]
+                        existing_local_entry = local_campus_map.get(
+                            campus_name_processed
+                        )
+                        current_poi_title_len = len(poi_title)
 
                         if (
-                            not previous_match
-                            or current_prefix_ratio > previous_match["prefix_ratio"]
+                            existing_local_entry
+                            and current_poi_title_len
+                            >= existing_local_entry["title_len"]
                         ):
-                            current_school_data = final_universities_data_map[
-                                school_name
-                            ]
-                            existing_campus_names = {
-                                c["name"] for c in current_school_data["campuses"]
-                            }
+                            print(
+                                f"    [⏭️] {poi_title} → {campus_name_processed} (校内已有更优匹配 {existing_local_entry['poi_title']})"
+                            )
+                            continue
 
-                            if previous_match:
-                                prev_school_name = previous_match["school_name"]
-                                prev_school_output = final_universities_data_map.get(
-                                    prev_school_name
-                                )
-                                if prev_school_output:
-                                    prev_school_output["campuses"] = [
-                                        c
-                                        for c in prev_school_output["campuses"]
-                                        if c.get("id") != poi_id
-                                    ]
-                                    print(
-                                        f"    [🔄] {poi_title}: '{prev_school_name}' (占比 {previous_match['prefix_ratio']:.2f}) → '{school_name}' (占比 {current_prefix_ratio:.2f})"
-                                    )
-
-                            if campus_name_processed in existing_campus_names:
+                        # --- 执行添加或转移 ---
+                        if previous_global_match:  # 从其他学校转移过来
+                            prev_school_name = previous_global_match["school_name"]
+                            prev_school_output = final_universities_data_map.get(
+                                prev_school_name
+                            )
+                            if prev_school_output:
+                                prev_school_output["campuses"] = [
+                                    c
+                                    for c in prev_school_output["campuses"]
+                                    if c.get("id") != poi_id
+                                ]
                                 print(
-                                    f"    [⏭️] {poi_title} → {campus_name_processed} (校内同名)"
+                                    f"    [🔄] {poi_title}: {prev_school_name} (占比 {previous_global_match['prefix_ratio']:.2f}) → {school_name} (占比 {current_prefix_ratio:.2f})"
                                 )
-                                continue
 
-                            location = poi.get("location", {})
-                            campus_data = {
-                                "id": poi_id,
-                                "name": campus_name_processed,
-                                "address": poi.get("address"),
-                                "province": poi.get("province"),
-                                "city": poi.get("city"),
-                                "district": poi.get("district"),
-                                "location": {
-                                    "type": "Point",
-                                    "coordinates": [
-                                        location.get("lng"),
-                                        location.get("lat"),
-                                    ],
-                                },
-                            }
-                            current_school_data["campuses"].append(campus_data)
-
-                            processed_pois_map[poi_id] = {
-                                "school_name": school_name,
-                                "prefix_ratio": current_prefix_ratio,
-                            }
+                        if existing_local_entry:  # 替换校内已有的POI
+                            old_poi_id = existing_local_entry["poi_id"]
+                            current_school_data["campuses"] = [
+                                c
+                                for c in current_school_data["campuses"]
+                                if c.get("id") != old_poi_id
+                            ]
                             print(
-                                f"    [✅] {poi_title} → {campus_name_processed} (ID: {poi_id})"
+                                f"    [🔄] {poi_title} 替换了校内同校区名的POI {existing_local_entry['poi_title']}"
                             )
 
-                        else:
-                            print(
-                                f"    [🌐] {poi_title} (ID: {poi_id}, 已分配给更优匹配 '{previous_match['school_name']}' 占比 {previous_match['prefix_ratio']:.2f})"
-                            )
+                        location = poi.get("location", {})
+                        campus_data = {
+                            "id": poi_id,
+                            "name": campus_name_processed,
+                            "address": poi.get("address"),
+                            "province": poi.get("province"),
+                            "city": poi.get("city"),
+                            "district": poi.get("district"),
+                            "location": {
+                                "type": "Point",
+                                "coordinates": [
+                                    location.get("lng"),
+                                    location.get("lat"),
+                                ],
+                            },
+                        }
+                        current_school_data["campuses"].append(campus_data)
+
+                        # 更新全局和校内追踪信息
+                        processed_pois_map[poi_id] = {
+                            "school_name": school_name,
+                            "prefix_ratio": current_prefix_ratio,
+                        }
+                        local_campus_map[campus_name_processed] = {
+                            "poi_id": poi_id,
+                            "title_len": current_poi_title_len,
+                            "poi_title": poi_title,
+                        }
+                        print(
+                            f"    [✅] {poi_title} → {campus_name_processed} (ID: {poi_id})"
+                        )
+
                 else:
                     print(f"  - API请求失败或无数据，跳过此学校的后续请求。")
                     break
@@ -492,9 +521,12 @@ def process_university_data(excel_path: str):
     # 5. 写入所有输出文件
     print("\n--- 处理完成，正在生成报告文件 ---")
 
-    final_universities_data = list(
-        final_universities_data_map.values()
-    )  # 从map转回list
+    final_universities_data = list(final_universities_data_map.values())
+    # 清理临时的校内map
+    for school in final_universities_data:
+        if "_campus_map_temp" in school:
+            del school["_campus_map_temp"]
+
     universities_with_campuses = []
     universities_without_campuses = []
     for school in final_universities_data:
