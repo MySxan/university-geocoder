@@ -20,26 +20,35 @@ A Python tool to batch geocode Chinese universities using Tencent Maps API, merg
 ## Setup
 
 1. **Clone this repository:**
+
    ```bash
    git clone <repo-url>
    cd cn-university-geocoder
    ```
+
 2. **Create and activate a virtual environment (recommended):**
    - On Windows:
+
      ```bash
      python -m venv venv
      venv\Scripts\activate
      ```
+
    - On macOS/Linux:
+
      ```bash
      python3 -m venv venv
      source venv/bin/activate
      ```
+
 3. **Install dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
+
 4. **Prepare a `.env` file in the project root with your Tencent Maps API credentials:**
+
    ```env
    TENCENT_MAP_KEY="your_key"
    TENCENT_MAP_SK="your_secret_key"

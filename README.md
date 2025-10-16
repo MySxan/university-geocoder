@@ -2,6 +2,8 @@
 
 **中文** | [English](README_en.md)
 
+This project is a variant of [cn-university-geocoder](https://github.com/Naptie/cn-university-geocoder),
+extended for global universities with multi-map API support.  
 一个用于批量查询并收集全国高校地理信息的 Python 工具。基于腾讯地图 API，融合教育部数据和补充信息，导出结构化结果以便后续使用。
 
 ## 功能特性
@@ -20,26 +22,35 @@
 ## 环境搭建
 
 1. **克隆本仓库：**
+
    ```bash
    git clone <repo-url>
    cd cn-university-geocoder
    ```
+
 2. **创建并激活虚拟环境（推荐）：**
    - Windows：
+
      ```bash
      python -m venv venv
      venv\Scripts\activate
      ```
+
    - macOS/Linux：
+
      ```bash
      python3 -m venv venv
      source venv/bin/activate
      ```
+
 3. **安装依赖：**
+
    ```bash
    pip install -r requirements.txt
    ```
+
 4. **在项目根目录准备 `.env` 文件，填写腾讯地图 API 密钥：**
+
    ```env
    TENCENT_MAP_KEY="your_key"
    TENCENT_MAP_SK="your_secret_key"
