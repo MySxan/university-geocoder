@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class Logger(object):
-    """将控制台输出同时写入文件。"""
+    """将控制台输出同时写入文件"""
 
     def __init__(self, filename="default.log"):
         self.terminal = sys.stdout

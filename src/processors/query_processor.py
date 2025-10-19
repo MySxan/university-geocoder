@@ -7,19 +7,6 @@ def query_university(api: GooglePlacesAPI, cache: CacheManager,
                      university: dict, country: str | None = None) -> dict | None:
     """
     查询单个大学的Google Places信息
-    
-    使用两步流程：
-    1. Autocomplete 获取 placeId
-    2. Place Details 获取详细信息
-    
-    Args:
-        api: GooglePlacesAPI实例
-        cache: CacheManager实例
-        university: 大学数据字典（包含 Name, Country, 排名等字段）
-        country: 国家代码（用于限制搜索）
-    
-    Returns:
-        查询结果（包含 CSV 原始数据的引用）
     """
     name = university.get("Name", "").strip()
     if not name:
@@ -102,12 +89,6 @@ def query_university(api: GooglePlacesAPI, cache: CacheManager,
 def deduplicate_by_place_id(results: list[dict]) -> dict[str, dict]:
     """
     按place_id去重，并合并排名信息
-    
-    Args:
-        results: 查询结果列表
-    
-    Returns:
-        按place_id分组的去重结果
     """
     deduplicated = {}
     
@@ -122,7 +103,7 @@ def deduplicate_by_place_id(results: list[dict]) -> dict[str, dict]:
         if place_id not in deduplicated:
             deduplicated[place_id] = {
                 "place_id": place_id,
-                "csv_data_list": [],  # 保存所有匹配的 CSV 数据（用于合并排名）
+                "csv_data_list": [],  # 保存所有匹配的 CSV 数据
                 "csv_names": set(),  # CSV 中不同的名称
                 "locations": set(),  # 不同位置
                 "original_data": result,  # 保存第一个匹配的完整数据
@@ -139,7 +120,7 @@ def deduplicate_by_place_id(results: list[dict]) -> dict[str, dict]:
         if csv_name:
             deduplicated[place_id]["csv_names"].add(csv_name)
         
-        # 地理位置 - 从新 API 的 location 字段提取
+        # 地理位置信息
         location = result.get("location", {})
         if location:
             lat = location.get("latitude")

@@ -4,12 +4,6 @@ import csv
 def read_rankings_csv(csv_file: str) -> list[dict]:
     """
     读取排名CSV文件
-    
-    Args:
-        csv_file: CSV文件路径
-    
-    Returns:
-        大学列表
     """
     universities = []
     

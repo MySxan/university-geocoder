@@ -24,7 +24,7 @@ on:
       geocoding_mode:
         description: "Geocoding mode: 'china' (main.py) or 'global' (main_global.py)"
         required: true
-        default: "china"
+        default: "global"
         type: choice
         options:
           - china

@@ -9,12 +9,6 @@ class GooglePlacesAPI:
                  max_retries: int = 3, request_delay: float = 0.05):
         """
         Initialize Google Places API wrapper
-        
-        Args:
-            api_key: Google Maps API key
-            places_api_url: Base URL for Places API (New)
-            max_retries: Maximum retry attempts for failed requests
-            request_delay: Delay between requests (seconds)
         """
         self.api_key = api_key
         self.places_api_url = places_api_url
@@ -30,14 +24,6 @@ class GooglePlacesAPI:
                      longitude: float | None = None) -> dict | None:
         """
         Places API (New) Autocomplete 请求 - 获取 placeId
-        
-        Args:
-            query: 查询字符串（学校名称）
-            latitude: 纬度（用于位置偏向）
-            longitude: 经度（用于位置偏向）
-        
-        Returns:
-            包含 placeId 的响应字典，或 None 如果失败
         """
         url = f"{self.places_api_url}/places:autocomplete"
         
@@ -45,7 +31,7 @@ class GooglePlacesAPI:
             "input": query,
         }
         
-        # 添加位置偏向（如果提供了坐标）
+        # 添加位置偏向如果提供了坐标
         if latitude is not None and longitude is not None:
             payload["locationBias"] = {
                 "circle": {
@@ -58,7 +44,7 @@ class GooglePlacesAPI:
             }
         
         headers = self.headers.copy()
-        # 使用正确的 FieldMask 格式（不需要指定 placePrediction 路径）
+        # 使用正确的 FieldMask 格式
         headers["X-Goog-FieldMask"] = "suggestions"
         
         for attempt in range(self.max_retries):
@@ -105,12 +91,6 @@ class GooglePlacesAPI:
     def place_details(self, place_id: str) -> dict | None:
         """
         Places API (New) Place Details 请求 - 获取详细信息
-        
-        Args:
-            place_id: Google Maps place_id
-        
-        Returns:
-            包含地点详细信息的字典，或 None 如果失败
         """
         url = f"{self.places_api_url}/places/{place_id}"
         
@@ -160,9 +140,6 @@ class CacheManager:
     def __init__(self, cache_file: str):
         """
         Initialize cache manager
-        
-        Args:
-            cache_file: Path to cache file (JSON format)
         """
         import json
         import os
