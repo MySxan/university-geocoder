@@ -1,9 +1,3 @@
-"""
-Global University Geocoder - Configuration Module
-
-Global university processing configuration for Google Places API (New)
-"""
-
 import os
 from dotenv import load_dotenv
 

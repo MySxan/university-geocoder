@@ -1,10 +1,3 @@
-"""
-Google Places API (New) Integration Module
-
-Provides Google Places API wrapper for geocoding global universities.
-Two-step process: Autocomplete (get placeId) → Place Details (get info)
-"""
-
 import time
 import requests
 

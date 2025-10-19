@@ -1,9 +1,3 @@
-"""
-Logger and Checkpoint Management for Global University Processing
-
-Handles logging to console and file, plus progress checkpointing for resumable processing
-"""
-
 import sys
 import json
 import os

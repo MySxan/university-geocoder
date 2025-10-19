@@ -1,7 +1,3 @@
-"""
-API模块
-"""
-
 from .tencent_maps import request_tencent_api, QuotaExceededError, API_PATH
 from .google_places import GooglePlacesAPI, CacheManager
 

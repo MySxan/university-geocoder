@@ -1,9 +1,3 @@
-"""
-Query Processing Module for Global Universities
-
-Handles API queries and deduplication of university data
-"""
-
 import time
 from src.api.google_places import GooglePlacesAPI, CacheManager
 from src.config_global import REQUEST_DELAY

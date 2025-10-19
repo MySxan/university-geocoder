@@ -1,7 +1,3 @@
-"""
-处理器模块
-"""
-
 from .poi_processor import (
     process_poi_data,
     fetch_school_campuses,

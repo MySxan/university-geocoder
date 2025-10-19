@@ -1,9 +1,3 @@
-"""
-Output Writer Module for Global Universities
-
-Handles generation of output JSON and CSV reports
-"""
-
 import csv
 import json
 

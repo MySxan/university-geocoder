@@ -1,7 +1,3 @@
-"""
-数据模块
-"""
-
 from .loader import (
     load_university_data,
     load_supplementary_data,

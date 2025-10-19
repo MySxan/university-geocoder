@@ -1,7 +1,3 @@
-"""
-输出模块
-"""
-
 from .writer import (
     write_universities_json,
     write_csv,

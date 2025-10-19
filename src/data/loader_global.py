@@ -1,9 +1,3 @@
-"""
-Data Loading Module for Global Universities
-
-Load university ranking data from CSV
-"""
-
 import csv
 
 
