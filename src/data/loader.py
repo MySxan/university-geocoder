@@ -145,4 +145,4 @@ def merge_supplementary_data(school: dict, supp_data_map: dict) -> dict:
     school_output["campuses"] = []
     school_output["_campus_map_temp"] = {}  # 临时的校内去重辅助map
     
-    return school_output, found_details
+    return school_output, found_details  # type: ignore
