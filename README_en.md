@@ -37,7 +37,7 @@ A Python tool for batch querying and collecting geographic information of global
 
    ```bash
    git clone <repo-url>
-   cd global-university-geocoder
+   cd university-geocoder
    ```
 
 2. **Create and activate a virtual environment (recommended):**

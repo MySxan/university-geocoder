@@ -35,7 +35,7 @@
 
    ```bash
    git clone <repo-url>
-   cd global-university-geocoder
+   cd university-geocoder
    ```
 
 2. **创建并激活虚拟环境（推荐）：**
